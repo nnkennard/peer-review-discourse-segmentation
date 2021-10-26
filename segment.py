@@ -1,6 +1,8 @@
 import collections
 import glob
 import json
+import nltk
+from nltk.corpus import brown
 
 
 class Segment(object):
@@ -16,9 +18,16 @@ class Segment(object):
 
 SUBSETS = "train dev test".split()
 
+class Baseline(object):
+  label = "label"
+  alignment = "alignment"
+  text_tiling = "text_tiling"
+
+
+
 
 def review_label_segmentation(pair, label):
-  sequence = [sentence[label] for sentence in pair["review_sentences"]]
+  sequence = [sentence["coarse"] for sentence in pair["review_sentences"]]
   segments = []
   while True:
     curr = sequence.pop(0)
@@ -37,7 +46,7 @@ def review_label_segmentation(pair, label):
 
 def review_alignment_segmentation(pair):
   num_review_sentences = len(pair["review_sentences"])
-  mappers = {i: set([]) for i in range(num_review_sentences)}
+  mappers = {i: set([]) for i in range(num_review_sentences + 15)}
   alignments = [x["alignment"] for x in pair["rebuttal_sentences"]]
   for i, alignment in enumerate(alignments):
     _, indices = alignment
@@ -74,8 +83,44 @@ def review_alignment_segmentation(pair):
   return segments
 
 
+def get_text_block(sentences):
+  return " ".join([x["text"] + x["suffix"] for x in sentences])
+
+
+def condense_strings(string):
+  return "".join(string.split())
+
+def run_texttiling(sentences, tt):
+  text_block = get_text_block(sentences)
+  sentence_list = [x["text"] for x in sentences]
+  tt_segments = tt.tokenize(text_block)
+  matched_segment_start = 0
+  matched_segment_end = 0
+  segments = []
+  for segment in tt_segments:
+    condensed_segment = condense_strings(segment)
+    while True:
+      matched_segment = condense_strings(" ".join(
+        sentence_list[matched_segment_start:matched_segment_end]))
+      if matched_segment == condensed_segment:
+        index = len(segments)
+        segments.append(Segment("tt_segment_{0}".format(index), matched_segment_start,
+        matched_segment_end))
+        matched_segment_start = matched_segment_end
+        break
+      else:
+        matched_segment_end += 1
+
+  return segments
+
+
+def texttiling_segmentation(pair, tt):
+  return (run_texttiling(pair["review_sentences"], tt),
+  run_texttiling(pair["rebuttal_sentences"], tt))
+  
+
 def get_datasets():
-  dataset_dir = "final_dataset/"
+  dataset_dir = "../peer-review-discourse-dataset/data_prep/dsds/final_dataset/"
 
   datasets = collections.defaultdict(list)
 
@@ -92,12 +137,20 @@ def main():
   datasets = get_datasets()
   all_pairs = sum(datasets.values(), [])
 
-  for pair in all_pairs:
-    print(review_label_segmentation(pair, "coarse"))
-    print(review_alignment_segmentation(pair))
-    exit()
+  tt = nltk.TextTilingTokenizer()
 
-  pass
+  for pair in all_pairs[:10]:
+    review_tt_segments, rebuttal_tt_segments = texttiling_segmentation(pair, tt)
+    review_segmentations = {
+      Baseline.label: review_label_segmentation(pair),
+      Baseline.alignment: review_alignment_segmentation(pair),
+      Baseline.text_tiling: review_tt_segments,
+    }
+    rebuttal_segmentations = {
+      Baseline.text_tiling: rebuttal_tt_segments,
+    }
+
+
 
 
 if __name__ == "__main__":
