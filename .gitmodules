@@ -1,0 +1,3 @@
+[submodule "NeuralRST"]
+	path = NeuralRST
+	url = https://github.com/fajri91/NeuralRST.git
