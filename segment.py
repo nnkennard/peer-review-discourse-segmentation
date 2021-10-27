@@ -12,6 +12,13 @@ class Segment(object):
     self.start = start
     self.excl_end = excl_end
 
+  def to_dict(self):
+    return {
+      "label": self.label,
+      "start": self.start,
+      "excl_end": self.excl_end
+    }
+
   def __repr__(self):
     return "({0} s={1} e={2})".format(self.label, self.start, self.excl_end)
 
@@ -26,7 +33,7 @@ class Baseline(object):
 
 
 
-def review_label_segmentation(pair, label):
+def review_label_segmentation(pair):
   sequence = [sentence["coarse"] for sentence in pair["review_sentences"]]
   segments = []
   while True:
@@ -41,7 +48,7 @@ def review_label_segmentation(pair, label):
       segments.append(Segment(curr, i, i + 1))
     if not sequence:
       break
-  return segments
+  return jsonify_segments(segments)
 
 
 def review_alignment_segmentation(pair):
@@ -80,7 +87,7 @@ def review_alignment_segmentation(pair):
     segment.label = "reb_idxs_" + "|".join(
         [str(i) for i in sorted(alignment_starter)])
 
-  return segments
+  return jsonify_segments(segments)
 
 
 def get_text_block(sentences):
@@ -111,8 +118,10 @@ def run_texttiling(sentences, tt):
       else:
         matched_segment_end += 1
 
-  return segments
+  return jsonify_segments(segments)
 
+def jsonify_segments(segments):
+  return [x.to_dict() for x in segments]
 
 def texttiling_segmentation(pair, tt):
   return (run_texttiling(pair["review_sentences"], tt),
@@ -139,7 +148,9 @@ def main():
 
   tt = nltk.TextTilingTokenizer()
 
-  for pair in all_pairs[:10]:
+  all_segmentations = []
+
+  for pair in datasets['train'][:10]:
     review_tt_segments, rebuttal_tt_segments = texttiling_segmentation(pair, tt)
     review_segmentations = {
       Baseline.label: review_label_segmentation(pair),
@@ -149,8 +160,17 @@ def main():
     rebuttal_segmentations = {
       Baseline.text_tiling: rebuttal_tt_segments,
     }
+    all_segmentations.append({
+    "review_id": pair["metadata"]["review_id"],
+    "review_sentences": [x["text"] + x["suffix"]
+          for x in pair["review_sentences"]],
+    "rebuttal_sentences": [x["text"] + x["suffix"]
+          for x in pair["rebuttal_sentences"]],
+    "review_segmentations": review_segmentations,
+    "rebuttal_segmentations": rebuttal_segmentations})
 
-
+  with open('baselines.json', 'w') as f:
+    json.dump(all_segmentations, f)
 
 
 if __name__ == "__main__":
