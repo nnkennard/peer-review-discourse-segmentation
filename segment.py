@@ -31,10 +31,7 @@ class Baseline(object):
   text_tiling = "text_tiling"
 
 
-
-
-def review_label_segmentation(pair):
-  sequence = [sentence["coarse"] for sentence in pair["review_sentences"]]
+def segment_label_list(sequence):
   segments = []
   while True:
     curr = sequence.pop(0)
@@ -50,6 +47,58 @@ def review_label_segmentation(pair):
       break
   return jsonify_segments(segments)
 
+def rebuttal_label_segmentation(pair):
+  return segment_label_list(
+  [sentence["fine"] for sentence in pair["rebuttal_sentences"]])
+
+
+def review_label_segmentation(pair):
+  sequence = []
+  for sentence in pair["review_sentences"]:
+    if sentence["fine"] == 'none':
+      sequence.append(sentence["coarse"])
+    else:
+      sequence.append(sentence["coarse"] + "|" + sentence["fine"].split("_")[1])
+  return segment_label_list(sequence)
+
+
+def segment_alignment_map(alignment_map, final_sequence_len, name_prefix):
+  i = 0
+  segments = []
+  must_start_new_segment = False
+  while i < final_sequence_len:
+    if must_start_new_segment:
+      if alignment_map[i]:
+        segments.append(Segment("temp_name", i, i + 1))
+        must_start_new_segment = False
+    else:
+      if not alignment_map[i]:
+        pass
+      else:
+        if alignment_map[i].intersection(alignment_map[i - 1]):
+          segments[-1].excl_end += 1
+        else:
+          segments.append(Segment("temp_name", i, i + 1))
+        must_start_new_segment = False
+    i += 1
+
+  for segment in segments:
+    alignment_starter = alignment_map[segment.start]
+    for index in range(segment.start + 1, segment.excl_end):
+      alignment_starter = alignment_starter.intersection(alignment_map[index])
+    segment.label = name_prefix + "|".join(
+        [str(i) for i in sorted(alignment_starter)])
+  return jsonify_segments(segments)
+
+
+def rebuttal_alignment_segmentation(pair):
+  num_rebuttal_sentences = len(pair["rebuttal_sentences"])
+  mappers = {i: set([]) for i in range(num_rebuttal_sentences)}
+  for i, reb_sentence in enumerate(pair["rebuttal_sentences"]):
+    _, indices = reb_sentence["alignment"]
+    if indices is not None:
+      mappers[i] = set(indices)
+  return segment_alignment_map(mappers, num_rebuttal_sentences, "rev_idxs_")
 
 def review_alignment_segmentation(pair):
   num_review_sentences = len(pair["review_sentences"])
@@ -60,34 +109,7 @@ def review_alignment_segmentation(pair):
     if indices is not None:
       for j in indices:
         mappers[j].add(i)
-
-  i = 0
-  segments = []
-  must_start_new_segment = False
-  while i < num_review_sentences:
-    if must_start_new_segment:
-      if mappers[i]:
-        segments.append(Segment("temp_name", i, i + 1))
-        must_start_new_segment = False
-    else:
-      if not mappers[i]:
-        pass
-      else:
-        if mappers[i].intersection(mappers[i - 1]):
-          segments[-1].excl_end += 1
-        else:
-          segments.append(Segment("temp_name", i, i + 1))
-        must_start_new_segment = False
-    i += 1
-
-  for segment in segments:
-    alignment_starter = mappers[segment.start]
-    for index in range(segment.start + 1, segment.excl_end):
-      alignment_starter = alignment_starter.intersection(mappers[index])
-    segment.label = "reb_idxs_" + "|".join(
-        [str(i) for i in sorted(alignment_starter)])
-
-  return jsonify_segments(segments)
+  return segment_alignment_map(mappers, num_review_sentences, "reb_idxs_")
 
 
 def get_text_block(sentences):
@@ -159,6 +181,8 @@ def main():
     }
     rebuttal_segmentations = {
       Baseline.text_tiling: rebuttal_tt_segments,
+      Baseline.label: rebuttal_label_segmentation(pair),
+      Baseline.alignment: rebuttal_alignment_segmentation(pair),
     }
     all_segmentations.append({
     "review_id": pair["metadata"]["review_id"],
