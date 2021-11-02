@@ -2,25 +2,13 @@ import collections
 import glob
 import json
 import nltk
+import tqdm
 from nltk.corpus import brown
+from pycorenlp import StanfordCoreNLP
 
+import entity_grid_lib
+import segment_lib
 
-class Segment(object):
-
-  def __init__(self, label, start, excl_end):
-    self.label = label
-    self.start = start
-    self.excl_end = excl_end
-
-  def to_dict(self):
-    return {
-      "label": self.label,
-      "start": self.start,
-      "excl_end": self.excl_end
-    }
-
-  def __repr__(self):
-    return "({0} s={1} e={2})".format(self.label, self.start, self.excl_end)
 
 
 SUBSETS = "train dev test".split()
@@ -29,6 +17,7 @@ class Baseline(object):
   label = "label"
   alignment = "alignment"
   text_tiling = "text_tiling"
+  entity_grid = "entity_grid"
 
 
 def segment_label_list(sequence):
@@ -42,10 +31,10 @@ def segment_label_list(sequence):
         i = segments[-1].excl_end
       else:
         i = 0
-      segments.append(Segment(curr, i, i + 1))
+      segments.append(segment_lib.Segment(curr, i, i + 1))
     if not sequence:
       break
-  return jsonify_segments(segments)
+  return segment_lib.jsonify_segments(segments)
 
 def rebuttal_label_segmentation(pair):
   return segment_label_list(
@@ -69,7 +58,7 @@ def segment_alignment_map(alignment_map, final_sequence_len, name_prefix):
   while i < final_sequence_len:
     if must_start_new_segment:
       if alignment_map[i]:
-        segments.append(Segment("temp_name", i, i + 1))
+        segments.append(segment_lib.Segment("temp_name", i, i + 1))
         must_start_new_segment = False
     else:
       if not alignment_map[i]:
@@ -78,7 +67,7 @@ def segment_alignment_map(alignment_map, final_sequence_len, name_prefix):
         if alignment_map[i].intersection(alignment_map[i - 1]):
           segments[-1].excl_end += 1
         else:
-          segments.append(Segment("temp_name", i, i + 1))
+          segments.append(segment_lib.Segment("temp_name", i, i + 1))
         must_start_new_segment = False
     i += 1
 
@@ -88,7 +77,7 @@ def segment_alignment_map(alignment_map, final_sequence_len, name_prefix):
       alignment_starter = alignment_starter.intersection(alignment_map[index])
     segment.label = name_prefix + "|".join(
         [str(i) for i in sorted(alignment_starter)])
-  return jsonify_segments(segments)
+  return segment_lib.jsonify_segments(segments)
 
 
 def rebuttal_alignment_segmentation(pair):
@@ -133,28 +122,26 @@ def run_texttiling(sentences, tt):
         sentence_list[matched_segment_start:matched_segment_end]))
       if matched_segment == condensed_segment:
         index = len(segments)
-        segments.append(Segment("tt_segment_{0}".format(index), matched_segment_start,
+        segments.append(segment_lib.Segment("tt_segment_{0}".format(index), matched_segment_start,
         matched_segment_end))
         matched_segment_start = matched_segment_end
         break
       else:
         matched_segment_end += 1
 
-  return jsonify_segments(segments)
-
-def jsonify_segments(segments):
-  return [x.to_dict() for x in segments]
+  return segment_lib.jsonify_segments(segments)
 
 def texttiling_segmentation(pair, tt):
   return (run_texttiling(pair["review_sentences"], tt),
   run_texttiling(pair["rebuttal_sentences"], tt))
 
-def entity_grid_segmentation(pair, tt):
-  return (entity_grid_lib.run(pair["review_sentences"], pipeline),
-  entity_grid_lib.run(pair["rebuttal_sentences"], pipeline))
+def entity_grid_segmentation(pair, pipeline):
+  review_id = pair["metadata"]["review_id"]
+  return (entity_grid_lib.run(pair["review_sentences"], review_id, pipeline),
+  entity_grid_lib.run(pair["rebuttal_sentences"], review_id, pipeline))
 
 def get_datasets():
-  dataset_dir = "../peer-review-discourse-dataset/data_prep/dsds/final_dataset/"
+  dataset_dir = "../peer-review-discourse-dataset/data_prep/final_dataset/"
 
   datasets = collections.defaultdict(list)
 
@@ -172,11 +159,11 @@ def main():
   all_pairs = sum(datasets.values(), [])
 
   tt = nltk.TextTilingTokenizer()
-  pipeline = _corenlp_pipeline
+  pipeline = StanfordCoreNLP('http://localhost:9000')
 
   all_segmentations = []
 
-  for pair in datasets['train'][:10]:
+  for pair in tqdm.tqdm(datasets['train'][:10]):
     review_tt_segments, rebuttal_tt_segments = texttiling_segmentation(pair, tt)
     review_eg_segments, rebuttal_eg_segments = entity_grid_segmentation(pair,
     pipeline)
@@ -184,11 +171,13 @@ def main():
       Baseline.label: review_label_segmentation(pair),
       Baseline.alignment: review_alignment_segmentation(pair),
       Baseline.text_tiling: review_tt_segments,
+      Baseline.entity_grid: review_eg_segments,
     }
     rebuttal_segmentations = {
-      Baseline.text_tiling: rebuttal_tt_segments,
       Baseline.label: rebuttal_label_segmentation(pair),
       Baseline.alignment: rebuttal_alignment_segmentation(pair),
+      Baseline.text_tiling: rebuttal_tt_segments,
+      Baseline.entity_grid: rebuttal_eg_segments,
     }
     all_segmentations.append({
     "review_id": pair["metadata"]["review_id"],

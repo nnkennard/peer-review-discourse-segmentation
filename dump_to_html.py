@@ -38,20 +38,27 @@ HTML_ENDER = """
 type_getter = ["*", "@"]
 
 def use_label_check(seg_type):
-  return 'label' in seg_type
+  return 'label' in seg_type or 'entity' in seg_type
 
 def get_segment_sequences(num_sentences, segmentations):
   segment_sequences = {}
   for segmentation_type, segments in segmentations.items():
     use_label = use_label_check(segmentation_type)
     labels = [""] * num_sentences
-    for i, segment in enumerate(segments):
-      if use_label:
-        h_type = segment["label"].split("_")[1]
-      else:
-        h_type = type_getter[i %2]
-      for j in range(segment["start"], segment["excl_end"]):
-        labels[j] = h_type
+    if segments is None:
+      labels = ["None"] * num_sentences
+    else:
+      for i, segment in enumerate(segments):
+        if use_label:
+          full_label = segment["label"]
+          if '_' in full_label:
+            h_type = full_label.split("_")[1]
+          else:
+            h_type = full_label
+        else:
+          h_type = type_getter[i %2]
+        for j in range(segment["start"], segment["excl_end"]):
+          labels[j] = h_type
     segment_sequences[segmentation_type] = labels
   return segment_sequences
 

@@ -2,6 +2,7 @@ import pandas as pd
 import glob
 import os
 
+
 def main():
   if not os.path.exists('output/'):
     os.makedirs('output/')

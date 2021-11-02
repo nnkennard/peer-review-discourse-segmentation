@@ -6,8 +6,10 @@ import os
 
 SUBSETS = "train dev test".split()
 
+
 def get_text_block(sentences):
   return " ".join([x["text"] + '\n' for x in sentences])
+
 
 def get_datasets():
   dataset_dir = "../../peer-review-discourse-dataset/data_prep/final_dataset/"
@@ -37,6 +39,7 @@ def main():
     print(pair["metadata"])
     out_file.write(text_block)
     out_file.close()
+
 
 if __name__ == "__main__":
   main()
