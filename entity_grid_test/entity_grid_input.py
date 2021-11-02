@@ -10,7 +10,7 @@ def get_text_block(sentences):
   return " ".join([x["text"] + '\n' for x in sentences])
 
 def get_datasets():
-  dataset_dir = "../peer-review-discourse-dataset/data_prep/final_dataset/"
+  dataset_dir = "../../peer-review-discourse-dataset/data_prep/final_dataset/"
 
   datasets = collections.defaultdict(list)
 
@@ -33,6 +33,8 @@ def main():
     filename = pair['metadata']['review_id'] + '.txt'
     text_block = get_text_block(pair['review_sentences'])
     out_file = open(text_dir + filename, 'w')
+    print(text_dir, filename)
+    print(pair["metadata"])
     out_file.write(text_block)
     out_file.close()
 

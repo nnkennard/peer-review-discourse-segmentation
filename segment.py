@@ -126,7 +126,10 @@ def jsonify_segments(segments):
 def texttiling_segmentation(pair, tt):
   return (run_texttiling(pair["review_sentences"], tt),
   run_texttiling(pair["rebuttal_sentences"], tt))
-  
+
+def entity_grid_segmentation(pair, tt):
+  return (entity_grid_lib.run(pair["review_sentences"], pipeline),
+  entity_grid_lib.run(pair["rebuttal_sentences"], pipeline))
 
 def get_datasets():
   dataset_dir = "../peer-review-discourse-dataset/data_prep/dsds/final_dataset/"
@@ -147,11 +150,14 @@ def main():
   all_pairs = sum(datasets.values(), [])
 
   tt = nltk.TextTilingTokenizer()
+  pipeline = _corenlp_pipeline
 
   all_segmentations = []
 
   for pair in datasets['train'][:10]:
     review_tt_segments, rebuttal_tt_segments = texttiling_segmentation(pair, tt)
+    review_eg_segments, rebuttal_eg_segments = entity_grid_segmentation(pair,
+    pipeline)
     review_segmentations = {
       Baseline.label: review_label_segmentation(pair),
       Baseline.alignment: review_alignment_segmentation(pair),

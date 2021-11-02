@@ -4,6 +4,11 @@ import os, json, sys
 
 nlp = StanfordCoreNLP('http://localhost:9000')  # requires you have the Stanford CoreNLP server running: https://stanfordnlp.github.io/CoreNLP/corenlp-server.html#getting-started
 
+print(nlp)
+import requests
+print(requests.post('http://[::]:9000/?properties={"annotators":"tokenize,ssplit,pos","outputFormat":"json"}',
+data = {'data':'The quick brown fox jumped over the lazy dog.'}).text)
+
 if not os.path.exists('parsed/'):
     os.makedirs('parsed/')
 if not os.path.exists('grid/'):
@@ -68,7 +73,8 @@ for filename in os.listdir("text/"):
         document = in_file.read()
         try:
             output = nlp.annotate(document, properties={
-                'annotators': 'tokenize,ssplit,pos,depparse,parse',
+                #'annotators': 'tokenize,ssplit,pos,depparse,parse',
+                'annotators': 'tokenize,ssplit,pos,parse',
                 'outputFormat': 'json',
                 'ssplit.eolonly': True
             })
@@ -78,8 +84,11 @@ for filename in os.listdir("text/"):
         if output == 'CoreNLP request timed out. Your document may be too long.':
             print('Timed out when attempting to parse file %s' % filename)
             continue
-        print(len(output['sentences']))
+        if output == "Could not handle incoming annotation":
+          continue
+        output = json.loads(output)
         for sent in output['sentences']:
+            #dsds
             sent_idx = sent['index'] + 1
             const_out.write(sent['parse'] + "\n")
             json.dump(sent['basicDependencies'], dep_out)
